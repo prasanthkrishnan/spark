@@ -23,6 +23,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.concurrent.{ScheduledFuture, TimeUnit}
 
+import org.apache.spark.util.{ThreadUtils, SignalLogger, Utils}
 import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet}
 import scala.language.postfixOps
 import scala.util.Random
@@ -129,6 +130,8 @@ private[deploy] class Master(
   private val restServerEnabled = conf.getBoolean("spark.master.rest.enabled", true)
   private var restServer: Option[StandaloneRestServer] = None
   private var restServerBoundPort: Option[Int] = None
+
+  private val tetrisFairnessKnob = 0
 
   override def onStart(): Unit = {
     logInfo("Starting Spark master at " + masterUrl)
@@ -678,11 +681,29 @@ private[deploy] class Master(
     }
   }
 
+  private def tetris_scheduleExecutorsOnWorkers(): Unit = {
+      var keepScheduling = false
+      val useableApplications = waitingApps.sortBy(_.startTime) take math.ceil(tetrisFairnessKnob * waitingApps.length).toInt
+      do {
+        TetrisSchedulerUtils.scheduleApplications(workers, useableApplications) match {
+          case Some((similarity:Double, worker:WorkerInfo, app:ApplicationInfo)) => {
+            val exec = app.addExecutor(worker, app.desc.coresPerExecutor.getOrElse(TetrisSchedulerUtils.defaultCoresPerExecutor))
+            launchExecutor(worker, exec)
+            app.state = ApplicationState.RUNNING
+            keepScheduling = true
+          }
+          case _ => keepScheduling = false
+        }
+      } while(keepScheduling)
+  }
+
   /**
    * Schedule the currently available resources among waiting apps. This method will be called
    * every time a new app joins or resource availability changes.
    */
   private def schedule(): Unit = {
+    print("***************************Vaibhav modified master scala***********************************")
+    logInfo("***************************Vaibhav modified master scala***********************************")
     if (state != RecoveryState.ALIVE) { return }
     // Drivers take strict precedence over executors
     val shuffledWorkers = Random.shuffle(workers) // Randomization helps balance drivers
