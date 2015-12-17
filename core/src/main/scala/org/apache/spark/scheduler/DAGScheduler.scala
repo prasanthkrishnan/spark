@@ -844,9 +844,10 @@ class DAGScheduler(
 
     val job = new ActiveJob(jobId, finalStage, callSite, listener, properties)
     clearCacheLocs()
+    logInfo("**********************Vaibhav pls*****************************")
     logInfo("Got job %s (%s) with %d output partitions".format(
       job.jobId, callSite.shortForm, partitions.length))
-    logInfo("Final stage: " + finalStage + " (" + finalStage.name + ")")
+    logInfo("*********************************Tetris Spark**************************Final stage: " + finalStage + " (" + finalStage.name + ")")
     logInfo("Parents of final stage: " + finalStage.parents)
     logInfo("Missing parents: " + getMissingParentStages(finalStage))
 
