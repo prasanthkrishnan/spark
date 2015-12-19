@@ -66,6 +66,8 @@ private[deploy] class Master(
   private val RETAINED_DRIVERS = conf.getInt("spark.deploy.retainedDrivers", 200)
   private val REAPER_ITERATIONS = conf.getInt("spark.dead.worker.persistence", 15)
   private val RECOVERY_MODE = conf.get("spark.deploy.recoveryMode", "NONE")
+  private val TETRIS_FAIRNESS_KNOB = conf.getDouble("spark.tetris.fairnessknob", 0.5)
+  private val TETRIS_ENABLED = conf.getBoolean("spark.tetris.enabled", false)
 
   val workers = new HashSet[WorkerInfo]
   val idToApp = new HashMap[String, ApplicationInfo]
@@ -131,11 +133,10 @@ private[deploy] class Master(
   private var restServer: Option[StandaloneRestServer] = None
   private var restServerBoundPort: Option[Int] = None
 
-  private val tetrisFairnessKnob = 0
-
   override def onStart(): Unit = {
     logInfo("Starting Spark master at " + masterUrl)
     logInfo(s"Running Spark version ${org.apache.spark.SPARK_VERSION}")
+
     webUi = new MasterWebUI(this, webUiPort)
     webUi.bind()
     masterWebUiUrl = "http://" + masterPublicAddress + ":" + webUi.boundPort
@@ -683,7 +684,7 @@ private[deploy] class Master(
 
   private def tetris_scheduleExecutorsOnWorkers(): Unit = {
       var keepScheduling = false
-      val useableApplications = waitingApps.sortBy(_.startTime) take math.ceil(tetrisFairnessKnob * waitingApps.length).toInt
+      val useableApplications = waitingApps.sortBy(_.startTime) take math.ceil((1 - TETRIS_FAIRNESS_KNOB) * waitingApps.length).toInt
       do {
         TetrisSchedulerUtils.scheduleApplications(workers, useableApplications) match {
           case Some((similarity:Double, worker:WorkerInfo, app:ApplicationInfo)) => {
@@ -697,14 +698,24 @@ private[deploy] class Master(
       } while(keepScheduling)
   }
 
-  /**
-   * Schedule the currently available resources among waiting apps. This method will be called
-   * every time a new app joins or resource availability changes.
-   */
-  private def schedule(): Unit = {
-    print("***************************Vaibhav modified master scala***********************************")
-    logInfo("***************************Vaibhav modified master scala***********************************")
-    if (state != RecoveryState.ALIVE) { return }
+  private def schedule_Tetris(): Unit = {
+    logInfo("*************************** Tetris modified schedule_Tetris ***********************************")
+    var keepScheduling = false
+    do {
+      TetrisSchedulerUtils.scheduleDrivers(workers, waitingDrivers) match {
+        case Some((similarity:Double, worker:WorkerInfo, driver:DriverInfo)) => {
+          launchDriver(worker, driver)
+          waitingDrivers -= driver
+          keepScheduling = true
+        }
+        case _ => keepScheduling = false
+      }
+    } while(keepScheduling)
+    tetris_scheduleExecutorsOnWorkers()
+  }
+
+  private def schedule_FIFO(): Unit = {
+    logInfo("*************************** Tetris modified schedule_FIFO ***********************************")
     // Drivers take strict precedence over executors
     val shuffledWorkers = Random.shuffle(workers) // Randomization helps balance drivers
     for (worker <- shuffledWorkers if worker.state == WorkerState.ALIVE) {
@@ -716,6 +727,17 @@ private[deploy] class Master(
       }
     }
     startExecutorsOnWorkers()
+  }
+
+  /**
+   * Schedule the currently available resources among waiting apps. This method will be called
+   * every time a new app joins or resource availability changes.
+   */
+  private def schedule(): Unit = {
+    logInfo("*************************** Tetris modified schedule ***********************************")
+    logInfo(s"*************** tetrisSchedulerEnabled-$TETRIS_ENABLED tetrisFairnessKnob-$TETRIS_FAIRNESS_KNOB *****************")
+    if (state != RecoveryState.ALIVE) { return }
+    if(TETRIS_ENABLED) schedule_Tetris() else schedule_FIFO()
   }
 
   private def launchExecutor(worker: WorkerInfo, exec: ExecutorDesc): Unit = {
