@@ -36,9 +36,9 @@ object TetrisSchedulerUtils {
   }
 
   /**
-   *
-   * @param workers
-   * @param waitingApps
+   * Returns the Optimal executor,worker pair to launch given the current available resource resource
+   * @param workers current worker resource availablity
+   * @param waitingApps Apps to be scheduled
    * @return
    */
   def scheduleApplications
@@ -86,9 +86,9 @@ object TetrisSchedulerUtils {
   }
 
   /**
-   *
-   * @param workers
-   * @param waitingDrivers
+   * Returns the Optimal driver, workerpair to launch given the current available resources
+   * @param workers current worker resource availablity
+   * @param waitingDrivers Drivers waiting to be scheduled
    * @return
    */
   def scheduleDrivers
